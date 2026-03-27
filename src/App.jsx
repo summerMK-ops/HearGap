@@ -4,6 +4,7 @@ import { lessonLibrary } from "./data";
 const LOOP_OPTIONS = [1, 3];
 const SPEED_OPTIONS = [1, 0.8, 0.6];
 const STORAGE_KEY = "heargap-mvp-state";
+const VOICE_STORAGE_KEY = "heargap-voice-uri";
 
 const tokenize = (text) =>
   text
@@ -22,30 +23,53 @@ const compareDictation = (input, answer) => {
   }));
 };
 
-const pickEnglishVoice = () => {
+const scoreEnglishVoice = (voice) => {
+  const name = (voice.name ?? "").toLowerCase();
+  const lang = (voice.lang ?? "").toLowerCase();
+
+  let score = 0;
+
+  if (lang === "en-us") score += 100;
+  else if (lang.startsWith("en-")) score += 70;
+
+  if (/google/.test(name)) score += 40;
+  if (/microsoft/.test(name)) score += 35;
+  if (/natural|neural|premium|enhanced|aria|jenny|guy|davis|samantha/.test(name)) score += 30;
+  if (/zira|hazel|daniel|alex|serena|allison|ava|andrew/.test(name)) score += 20;
+  if (/japanese|kyoko|haruka|ichiro/.test(name)) score -= 200;
+  if (voice.default) score += 10;
+
+  return score;
+};
+
+const getEnglishVoices = () => {
   if (typeof window === "undefined" || !window.speechSynthesis) {
-    return null;
+    return [];
   }
 
   const voices = window.speechSynthesis.getVoices();
   if (!voices.length) {
+    return [];
+  }
+
+  return voices
+    .filter((voice) => voice.lang?.toLowerCase().startsWith("en") || /english|google|microsoft/i.test(voice.name))
+    .sort((a, b) => scoreEnglishVoice(b) - scoreEnglishVoice(a));
+};
+
+const pickEnglishVoice = (voices, preferredVoiceURI) => {
+  if (!voices.length) {
     return null;
   }
 
-  const byExactLocale = voices.find(
-    (voice) => voice.lang?.toLowerCase() === "en-us" && /en|english/i.test(voice.name),
-  );
-  if (byExactLocale) {
-    return byExactLocale;
+  if (preferredVoiceURI) {
+    const matched = voices.find((voice) => voice.voiceURI === preferredVoiceURI);
+    if (matched) {
+      return matched;
+    }
   }
 
-  const byEnglishLocale = voices.find((voice) => voice.lang?.toLowerCase().startsWith("en-"));
-  if (byEnglishLocale) {
-    return byEnglishLocale;
-  }
-
-  const byEnglishName = voices.find((voice) => /en|english/i.test(voice.name));
-  return byEnglishName ?? null;
+  return voices[0] ?? null;
 };
 
 function HomeScreen({ lessons, onStart, stats }) {
@@ -128,6 +152,7 @@ function LessonScreen({
   const [showResult, setShowResult] = useState(Boolean(progress.dictationChecked));
   const [recordingState, setRecordingState] = useState("idle");
   const [recordedUrl, setRecordedUrl] = useState(progress.recordedUrl ?? "");
+  const [englishVoices, setEnglishVoices] = useState([]);
   const [englishVoice, setEnglishVoice] = useState(null);
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
@@ -136,10 +161,12 @@ function LessonScreen({
 
   useEffect(() => {
     const updateVoice = () => {
-      const voice = pickEnglishVoice();
-      if (voice) {
-        setEnglishVoice(voice);
-      }
+      const voices = getEnglishVoices();
+      setEnglishVoices(voices);
+
+      const preferredVoiceURI = window.localStorage.getItem(VOICE_STORAGE_KEY);
+      const voice = pickEnglishVoice(voices, preferredVoiceURI);
+      setEnglishVoice(voice);
     };
 
     updateVoice();
@@ -149,6 +176,13 @@ function LessonScreen({
       window.speechSynthesis?.removeEventListener?.("voiceschanged", updateVoice);
     };
   }, []);
+
+  const handleVoiceChange = (event) => {
+    const voiceURI = event.target.value;
+    window.localStorage.setItem(VOICE_STORAGE_KEY, voiceURI);
+    const nextVoice = englishVoices.find((voice) => voice.voiceURI === voiceURI) ?? null;
+    setEnglishVoice(nextVoice);
+  };
 
   useEffect(() => {
     setDictation(progress.dictation ?? "");
@@ -350,6 +384,26 @@ function LessonScreen({
                   </button>
                 ))}
               </div>
+            </div>
+            <div>
+              <p className="control-label">Voice</p>
+              {englishVoices.length ? (
+                <select
+                  className="voice-select"
+                  value={englishVoice?.voiceURI ?? ""}
+                  onChange={handleVoiceChange}
+                >
+                  {englishVoices.map((voice) => (
+                    <option key={voice.voiceURI} value={voice.voiceURI}>
+                      {voice.name} ({voice.lang})
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <p className="error-text">
+                  英語音声が見つかりません。OSかブラウザに英語音声を追加すると改善します。
+                </p>
+              )}
             </div>
           </div>
         </div>
