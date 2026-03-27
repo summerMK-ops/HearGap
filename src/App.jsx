@@ -22,6 +22,32 @@ const compareDictation = (input, answer) => {
   }));
 };
 
+const pickEnglishVoice = () => {
+  if (typeof window === "undefined" || !window.speechSynthesis) {
+    return null;
+  }
+
+  const voices = window.speechSynthesis.getVoices();
+  if (!voices.length) {
+    return null;
+  }
+
+  const byExactLocale = voices.find(
+    (voice) => voice.lang?.toLowerCase() === "en-us" && /en|english/i.test(voice.name),
+  );
+  if (byExactLocale) {
+    return byExactLocale;
+  }
+
+  const byEnglishLocale = voices.find((voice) => voice.lang?.toLowerCase().startsWith("en-"));
+  if (byEnglishLocale) {
+    return byEnglishLocale;
+  }
+
+  const byEnglishName = voices.find((voice) => /en|english/i.test(voice.name));
+  return byEnglishName ?? null;
+};
+
 function HomeScreen({ lessons, onStart, stats }) {
   const tagSummary = Object.entries(stats.tagWeakness).sort((a, b) => b[1] - a[1]);
 
@@ -102,10 +128,27 @@ function LessonScreen({
   const [showResult, setShowResult] = useState(Boolean(progress.dictationChecked));
   const [recordingState, setRecordingState] = useState("idle");
   const [recordedUrl, setRecordedUrl] = useState(progress.recordedUrl ?? "");
+  const [englishVoice, setEnglishVoice] = useState(null);
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
   const timeoutRef = useRef([]);
   const streamRef = useRef(null);
+
+  useEffect(() => {
+    const updateVoice = () => {
+      const voice = pickEnglishVoice();
+      if (voice) {
+        setEnglishVoice(voice);
+      }
+    };
+
+    updateVoice();
+    window.speechSynthesis?.addEventListener?.("voiceschanged", updateVoice);
+
+    return () => {
+      window.speechSynthesis?.removeEventListener?.("voiceschanged", updateVoice);
+    };
+  }, []);
 
   useEffect(() => {
     setDictation(progress.dictation ?? "");
@@ -137,9 +180,12 @@ function LessonScreen({
 
     for (let loop = 0; loop < loopCount; loop += 1) {
       const utterance = new SpeechSynthesisUtterance(sentence.english);
-      utterance.lang = "en-US";
+      utterance.lang = englishVoice?.lang ?? "en-US";
       utterance.rate = speed;
       utterance.pitch = 1;
+      if (englishVoice) {
+        utterance.voice = englishVoice;
+      }
 
       utterance.onend = () => {
         if (loop === loopCount - 1) {
