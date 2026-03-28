@@ -42,6 +42,119 @@ const emptyHelper = () => ({
   tags: [],
 });
 
+const AUTO_TRANSLATIONS = {
+  what: "何",
+  are: "です",
+  you: "あなた",
+  doing: "している",
+  i: "私",
+  did: "した",
+  didnt: "しなかった",
+  get: "得る",
+  a: "",
+  chance: "機会",
+  to: "に",
+  call: "電話する",
+  lot: "たくさん",
+  of: "の",
+  people: "人々",
+  missed: "聞き逃した",
+  it: "それ",
+  pork: "豚肉",
+  and: "そして",
+  theres: "ある",
+  some: "いくつかの",
+  honey: "はちみつ",
+  garlic: "にんにく",
+};
+
+const KANA_MAP = {
+  what: "ワッ",
+  are: "アー",
+  you: "ユー",
+  doing: "ドゥーイン",
+  i: "アイ",
+  didnt: "ディン",
+  get: "ゲッ",
+  a: "ァ",
+  chance: "チャンス",
+  to: "タ",
+  call: "コール",
+  lot: "ロット",
+  of: "ァ",
+  people: "ピーポー",
+  missed: "ミスト",
+  it: "イッ",
+  pork: "ポーク",
+  and: "アン",
+  theres: "ゼアズ",
+  some: "サム",
+  honey: "ハニー",
+  garlic: "ガーリック",
+};
+
+const normalizeWord = (word) => word.toLowerCase().replace(/[^a-z']/g, "").replace(/'/g, "");
+
+const buildAutoHelper = (sentence) => {
+  if (DEFAULT_HELPERS[sentence]) {
+    return DEFAULT_HELPERS[sentence];
+  }
+
+  const normalized = tokenize(sentence);
+  const lowerSentence = sentence.toLowerCase();
+  const tags = [];
+  const notes = [];
+
+  let heardAs = sentence
+    .replace(/\bwhat are you\b/gi, "whaddaya")
+    .replace(/\bdidn't\b/gi, "din")
+    .replace(/\bgoing to\b/gi, "gonna")
+    .replace(/\bwant to\b/gi, "wanna")
+    .replace(/\ba lot of\b/gi, "alotta")
+    .replace(/\bgot to\b/gi, "gotta")
+    .replace(/\bkind of\b/gi, "kinda")
+    .replace(/\bout of\b/gi, "outta")
+    .replace(/\byou\b/gi, "ya");
+
+  if (/\b(what are|there is|there's|a lot of|kind of|out of|going to|want to)\b/i.test(lowerSentence)) {
+    tags.push("連結");
+    notes.push("語と語がつながって聞こえる。");
+  }
+
+  if (/\bdidn't\b|\bdoesn't\b|\bdon't\b|\bcan't\b/i.test(lowerSentence)) {
+    tags.push("脱落");
+    notes.push("子音の一部が落ちて短く聞こえる。");
+  }
+
+  if (/\byou\b|\bto\b|\bof\b|\band\b|\bfor\b|\ba\b/i.test(lowerSentence)) {
+    tags.push("弱形");
+    notes.push("機能語が弱く短くなる。");
+  }
+
+  if (/\b[a-z]+t [aeiou]/i.test(lowerSentence) || /\bit\b/i.test(lowerSentence)) {
+    tags.push("flap T");
+    notes.push("t/d が軽く弾かれて聞こえる可能性がある。");
+  }
+
+  const kana = normalized
+    .map((word) => KANA_MAP[normalizeWord(word)] ?? normalizeWord(word).toUpperCase())
+    .join(" ");
+
+  const translation = normalized
+    .map((word) => AUTO_TRANSLATIONS[normalizeWord(word)] ?? "")
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+
+  return {
+    heardAs,
+    kana,
+    translation: translation || "日本語メモを追加",
+    notes: notes.join(" "),
+    tags: [...new Set(tags)],
+  };
+};
+
 const tokenize = (text) =>
   text
     .toLowerCase()
@@ -235,6 +348,7 @@ function PracticePanel({
   sentence,
   helper,
   onHelperChange,
+  onAutoFill,
   currentIndex,
   totalSentences,
   onPrev,
@@ -515,6 +629,11 @@ function PracticePanel({
       <section className="helper-card">
         <p className="section-label">Helper Editor</p>
         <h3>カタカナ・脱落・日本語をこの文に付ける</h3>
+        <div className="editor-actions helper-actions">
+          <button className="ghost-button" onClick={onAutoFill}>
+            自動補助を再生成
+          </button>
+        </div>
         <HelperEditor helper={helper} onChange={onHelperChange} />
       </section>
 
@@ -636,7 +755,7 @@ export default function App() {
   const sentences = useMemo(() => splitIntoSentences(appliedText), [appliedText]);
   const draftSentences = useMemo(() => splitIntoSentences(sourceText), [sourceText]);
   const activeSentence = sentences[activeIndex] ?? "";
-  const activeHelper = helpersBySentence[activeSentence] ?? emptyHelper();
+  const activeHelper = helpersBySentence[activeSentence] ?? buildAutoHelper(activeSentence);
 
   useEffect(() => {
     window.localStorage.setItem(
@@ -663,7 +782,7 @@ export default function App() {
     setHelpersBySentence((current) => {
       const nextHelpers = {};
       nextSentences.forEach((sentence) => {
-        nextHelpers[sentence] = current[sentence] ?? DEFAULT_HELPERS[sentence] ?? emptyHelper();
+        nextHelpers[sentence] = current[sentence] ?? buildAutoHelper(sentence);
       });
       return nextHelpers;
     });
@@ -703,6 +822,7 @@ export default function App() {
             sentence={activeSentence}
             helper={activeHelper}
             onHelperChange={updateActiveHelper}
+            onAutoFill={() => updateActiveHelper(buildAutoHelper(activeSentence))}
             currentIndex={activeIndex}
             totalSentences={sentences.length}
             onPrev={() => setActiveIndex((current) => Math.max(current - 1, 0))}
