@@ -5,6 +5,7 @@ const SPEED_OPTIONS = [1, 0.8, 0.6];
 const STORAGE_KEY = "heargap-workspace";
 const VOICE_STORAGE_KEY = "heargap-voice-uri";
 const TAG_OPTIONS = ["連結", "脱落", "弱形", "flap T", "省略", "強勢"];
+const LOOP_GAP_MS = 300;
 
 const DEFAULT_TEXT = `What are you doing?
 I didn't get a chance to call you.
@@ -41,6 +42,8 @@ const emptyHelper = () => ({
   translation: "",
   notes: "",
   tags: [],
+  start: "",
+  end: "",
 });
 
 const AUTO_TRANSLATIONS = {
@@ -464,7 +467,7 @@ const pickEnglishVoice = (voices, preferredVoiceURI) => {
   return voices[0] ?? null;
 };
 
-function EditorCard({ text, onTextChange, onApply, sentenceCount }) {
+function EditorCard({ text, onTextChange, onApply, sentenceCount, audioUrl, onAudioUrlChange }) {
   return (
     <section className="card compact-card source-card">
       <p className="section-label">Source Text</p>
@@ -478,6 +481,22 @@ function EditorCard({ text, onTextChange, onApply, sentenceCount }) {
         onChange={(event) => onTextChange(event.target.value)}
         placeholder="What are you doing?"
       />
+      <div className="source-meta-grid">
+        <div>
+          <p className="control-label">Audio URL</p>
+          <input
+            className="text-input"
+            value={audioUrl}
+            onChange={(event) => onAudioUrlChange(event.target.value)}
+            placeholder="https://example.com/sample.mp3"
+          />
+        </div>
+        <div className="source-meta-hint">
+          <p className="muted">
+            元音声があれば `start / end` で1文だけ区間再生します。未設定時だけ英語TTSにフォールバックします。
+          </p>
+        </div>
+      </div>
       <div className="editor-actions">
         <button className="primary-button" onClick={onApply}>
           Sync View を更新
@@ -547,6 +566,26 @@ function HelperEditor({ helper, onChange }) {
           />
         </div>
         <div>
+          <p className="control-label">Start</p>
+          <input
+            className="text-input"
+            value={helper.start ?? ""}
+            onChange={(event) => onChange({ ...helper, start: event.target.value })}
+            placeholder="12.4"
+            inputMode="decimal"
+          />
+        </div>
+        <div>
+          <p className="control-label">End</p>
+          <input
+            className="text-input"
+            value={helper.end ?? ""}
+            onChange={(event) => onChange({ ...helper, end: event.target.value })}
+            placeholder="14.1"
+            inputMode="decimal"
+          />
+        </div>
+        <div>
           <p className="control-label">日本語</p>
           <input
             className="text-input"
@@ -593,6 +632,7 @@ function PracticePanel({
   totalSentences,
   onPrev,
   onNext,
+  audioUrl,
 }) {
   const [highlightIndex, setHighlightIndex] = useState(-1);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -611,6 +651,8 @@ function PracticePanel({
   const timeoutRef = useRef([]);
   const streamRef = useRef(null);
   const audioRef = useRef(null);
+  const audioContextRef = useRef(null);
+  const gainNodeRef = useRef(null);
 
   const words = useMemo(() => sentence.split(" "), [sentence]);
   const dictationResult = useMemo(() => compareDictation(dictation, sentence), [dictation, sentence]);
@@ -651,6 +693,7 @@ function PracticePanel({
       window.speechSynthesis.cancel();
       timeoutRef.current.forEach((id) => window.clearTimeout(id));
       streamRef.current?.getTracks().forEach((track) => track.stop());
+      audioContextRef.current?.close?.();
     };
   }, []);
 
@@ -676,6 +719,72 @@ function PracticePanel({
     }
     setIsPlaying(false);
     setHighlightIndex(-1);
+  };
+
+  const ensureAudioEnhancer = (audio) => {
+    if (typeof window === "undefined" || !window.AudioContext) {
+      return;
+    }
+
+    const context = audioContextRef.current ?? new window.AudioContext();
+    audioContextRef.current = context;
+    gainNodeRef.current = gainNodeRef.current ?? context.createGain();
+    gainNodeRef.current.gain.value = 1.1;
+
+    const source = context.createMediaElementSource(audio);
+    source.connect(gainNodeRef.current);
+    gainNodeRef.current.connect(context.destination);
+    context.resume?.();
+  };
+
+  const runSegmentPlayback = () => {
+    const start = Number.parseFloat(helper.start);
+    const end = Number.parseFloat(helper.end);
+
+    if (!audioUrl || Number.isNaN(start) || Number.isNaN(end) || end <= start) {
+      return false;
+    }
+
+    timeoutRef.current.forEach((id) => window.clearTimeout(id));
+    timeoutRef.current = [];
+
+    const audio = new Audio(audioUrl);
+    audioRef.current = audio;
+    ensureAudioEnhancer(audio);
+    setIsPlaying(true);
+
+    const segmentDurationMs = ((end - start) * 1000) / speed;
+    scheduleHighlights(segmentDurationMs, LOOP_GAP_MS);
+
+    let playedCount = 0;
+
+    const playOnce = () => {
+      audio.currentTime = start;
+      audio.playbackRate = speed;
+      audio.play().catch(() => {
+        setIsPlaying(false);
+        setHighlightIndex(-1);
+      });
+
+      const pauseId = window.setTimeout(() => {
+        audio.pause();
+        playedCount += 1;
+
+        if (playedCount < loopCount) {
+          const nextId = window.setTimeout(playOnce, LOOP_GAP_MS);
+          timeoutRef.current.push(nextId);
+          return;
+        }
+
+        setIsPlaying(false);
+        setHighlightIndex(-1);
+      }, segmentDurationMs);
+
+      timeoutRef.current.push(pauseId);
+    };
+
+    playOnce();
+    return true;
   };
 
   const runTtsPlayback = () => {
@@ -714,6 +823,9 @@ function PracticePanel({
 
   const runPlayback = () => {
     stopPlayback();
+    if (runSegmentPlayback()) {
+      return;
+    }
     runTtsPlayback();
   };
 
@@ -803,7 +915,9 @@ function PracticePanel({
 
       <div className="sync-panel">
         <p className="section-label">Sync View</p>
-        {helper.heardAs ? <p className="heard-as">{helper.heardAs}</p> : null}
+        {helper.heardAs && helper.heardAs.trim().toLowerCase() !== sentence.trim().toLowerCase() ? (
+          <p className="heard-as">{helper.heardAs}</p>
+        ) : null}
         {helper.kana ? <p className="kana-line">{helper.kana}</p> : null}
         {helper.ipa ? <p className="ipa-line">{helper.ipa}</p> : null}
         {helper.translation ? <p className="translation">{helper.translation}</p> : null}
@@ -939,6 +1053,10 @@ export default function App() {
     const saved = window.localStorage.getItem(STORAGE_KEY);
     return saved ? JSON.parse(saved).helpersBySentence ?? DEFAULT_HELPERS : DEFAULT_HELPERS;
   });
+  const [audioUrl, setAudioUrl] = useState(() => {
+    const saved = window.localStorage.getItem(STORAGE_KEY);
+    return saved ? JSON.parse(saved).audioUrl ?? "" : "";
+  });
   const [activeIndex, setActiveIndex] = useState(0);
 
   const sentences = useMemo(() => splitIntoSentences(appliedText), [appliedText]);
@@ -953,9 +1071,10 @@ export default function App() {
         sourceText,
         appliedText,
         helpersBySentence,
+        audioUrl,
       }),
     );
-  }, [sourceText, appliedText, helpersBySentence]);
+  }, [sourceText, appliedText, helpersBySentence, audioUrl]);
 
   useEffect(() => {
     if (activeIndex > sentences.length - 1) {
@@ -1001,6 +1120,8 @@ export default function App() {
             onTextChange={setSourceText}
             onApply={applySourceText}
             sentenceCount={draftSentences.length}
+            audioUrl={audioUrl}
+            onAudioUrlChange={setAudioUrl}
           />
           <SentenceRail sentences={sentences} activeIndex={activeIndex} onSelect={setActiveIndex} />
         </div>
@@ -1015,6 +1136,7 @@ export default function App() {
             totalSentences={sentences.length}
             onPrev={() => setActiveIndex((current) => Math.max(current - 1, 0))}
             onNext={() => setActiveIndex((current) => Math.min(current + 1, sentences.length - 1))}
+            audioUrl={audioUrl}
           />
         ) : (
           <section className="card empty-card">

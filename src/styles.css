@@ -441,6 +441,18 @@ textarea {
   padding: 16px;
 }
 
+.source-meta-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.source-meta-hint {
+  display: grid;
+  align-content: end;
+}
+
 .compact-controls {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
@@ -607,6 +619,10 @@ textarea {
     grid-template-columns: 1fr;
   }
 
+  .source-meta-grid {
+    grid-template-columns: 1fr;
+  }
+
   .helper-grid {
     grid-template-columns: 1fr;
   }
@@ -680,7 +696,14 @@ textarea {
 
   .lesson-nav {
     width: 100%;
-    display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: stretch;
+    gap: 8px;
+  }
+
+  .lesson-nav > * {
+    flex: 1 1 0;
   }
 }
