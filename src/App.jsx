@@ -63,9 +63,14 @@ const AUTO_TRANSLATIONS = {
   pork: "豚肉",
   and: "そして",
   theres: "ある",
-  some: "いくつかの",
+  some: "いくらかの",
   honey: "はちみつ",
   garlic: "にんにく",
+  oh: "ああ",
+  yeah: "うん",
+  quit: "やめる",
+  right: "すぐ",
+  now: "今",
 };
 
 const KANA_MAP = {
@@ -86,65 +91,187 @@ const KANA_MAP = {
   missed: "ミスト",
   it: "イッ",
   pork: "ポーク",
-  and: "アン",
+  and: "ン",
   theres: "ゼアズ",
   some: "サム",
   honey: "ハニー",
   garlic: "ガーリック",
+  oh: "オウ",
+  yeah: "イェー",
+  quit: "クウィッ",
+  right: "ライト",
+  now: "ナウ",
 };
 
+const PHRASE_RULES = [
+  {
+    match: ["what", "are", "you"],
+    heardAs: "whaddaya",
+    kana: "ワダヤ",
+    translation: "何してるの",
+    tags: ["連結", "弱形", "脱落"],
+    note: "what are you が一気につながって聞こえる。",
+  },
+  {
+    match: ["a", "lot", "of"],
+    heardAs: "alotta",
+    kana: "アロラ",
+    translation: "たくさんの",
+    tags: ["連結", "弱形"],
+    note: "a lot of がまとまって短くなる。",
+  },
+  {
+    match: ["going", "to"],
+    heardAs: "gonna",
+    kana: "ガナ",
+    translation: "するつもり",
+    tags: ["連結", "弱形"],
+    note: "going to が一塊で聞こえる。",
+  },
+  {
+    match: ["want", "to"],
+    heardAs: "wanna",
+    kana: "ワナ",
+    translation: "したい",
+    tags: ["連結", "弱形"],
+    note: "want to がワナのように縮む。",
+  },
+  {
+    match: ["got", "to"],
+    heardAs: "gotta",
+    kana: "ガラ",
+    translation: "しなきゃ",
+    tags: ["連結", "flap T"],
+    note: "got to がガラのように崩れる。",
+  },
+  {
+    match: ["kind", "of"],
+    heardAs: "kinda",
+    kana: "カインダ",
+    translation: "ちょっと",
+    tags: ["連結", "弱形"],
+    note: "kind of が短く縮む。",
+  },
+  {
+    match: ["out", "of"],
+    heardAs: "outta",
+    kana: "アウラ",
+    translation: "外へ",
+    tags: ["連結", "弱形", "flap T"],
+    note: "out of がアウラに近く聞こえる。",
+  },
+  {
+    match: ["right", "now"],
+    heardAs: "right now",
+    kana: "ライナウ",
+    translation: "今すぐ",
+    tags: ["連結"],
+    note: "right now が切れずに流れて聞こえる。",
+  },
+  {
+    match: ["there", "is"],
+    heardAs: "there's",
+    kana: "ゼアズ",
+    translation: "ある",
+    tags: ["連結", "弱形"],
+    note: "there is が there's に縮む。",
+  },
+];
+
 const normalizeWord = (word) => word.toLowerCase().replace(/[^a-z']/g, "").replace(/'/g, "");
+
+const normalizeInputText = (text) =>
+  text
+    .replace(/\r\n/g, "\n")
+    .replace(/([a-zA-Z])([,!?;:])([a-zA-Z])/g, "$1 $2 $3")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const tokenizeForHelper = (text) =>
+  normalizeInputText(text)
+    .replace(/[^a-zA-Z0-9'\s]/g, " ")
+    .split(/\s+/)
+    .map(normalizeWord)
+    .filter(Boolean);
 
 const buildAutoHelper = (sentence) => {
   if (DEFAULT_HELPERS[sentence]) {
     return DEFAULT_HELPERS[sentence];
   }
 
-  const normalized = tokenize(sentence);
-  const lowerSentence = sentence.toLowerCase();
+  const normalized = tokenizeForHelper(sentence);
+  const lowerSentence = normalizeInputText(sentence).toLowerCase();
   const tags = [];
   const notes = [];
+  const heardTokens = [];
+  const kanaTokens = [];
+  const translationTokens = [];
 
-  let heardAs = sentence
-    .replace(/\bwhat are you\b/gi, "whaddaya")
-    .replace(/\bdidn't\b/gi, "din")
-    .replace(/\bgoing to\b/gi, "gonna")
-    .replace(/\bwant to\b/gi, "wanna")
-    .replace(/\ba lot of\b/gi, "alotta")
-    .replace(/\bgot to\b/gi, "gotta")
-    .replace(/\bkind of\b/gi, "kinda")
-    .replace(/\bout of\b/gi, "outta")
-    .replace(/\byou\b/gi, "ya");
+  for (let index = 0; index < normalized.length; ) {
+    const phraseRule = PHRASE_RULES.find((rule) =>
+      rule.match.every((word, offset) => normalized[index + offset] === word),
+    );
 
-  if (/\b(what are|there is|there's|a lot of|kind of|out of|going to|want to)\b/i.test(lowerSentence)) {
-    tags.push("連結");
-    notes.push("語と語がつながって聞こえる。");
+    if (phraseRule) {
+      heardTokens.push(phraseRule.heardAs);
+      kanaTokens.push(phraseRule.kana);
+      if (phraseRule.translation) {
+        translationTokens.push(phraseRule.translation);
+      }
+      tags.push(...phraseRule.tags);
+      notes.push(phraseRule.note);
+      index += phraseRule.match.length;
+      continue;
+    }
+
+    const word = normalized[index];
+    let heardWord = word;
+    let kanaWord = KANA_MAP[word] ?? word;
+
+    if (word === "didnt") {
+      heardWord = "din";
+      kanaWord = "ディン";
+      tags.push("脱落");
+      notes.push("didn't の t が落ちやすい。");
+    } else if (word === "you") {
+      heardWord = "ya";
+      kanaWord = "ヤ";
+      tags.push("弱形");
+      notes.push("you が弱く ヤ に近づく。");
+    } else if (word === "and") {
+      heardWord = "n";
+      kanaWord = "ン";
+      tags.push("弱形");
+      notes.push("and が短く弱くなる。");
+    } else if (word === "to") {
+      heardWord = "tə";
+      kanaWord = "タ";
+      tags.push("弱形");
+      notes.push("to が弱く曖昧母音になる。");
+    } else if (word === "of") {
+      heardWord = "əv";
+      kanaWord = "ァヴ";
+      tags.push("弱形");
+      notes.push("of が弱く短くなる。");
+    }
+
+    heardTokens.push(heardWord);
+    kanaTokens.push(kanaWord);
+    const translation = AUTO_TRANSLATIONS[word];
+    if (translation) {
+      translationTokens.push(translation);
+    }
+    index += 1;
   }
 
-  if (/\bdidn't\b|\bdoesn't\b|\bdon't\b|\bcan't\b/i.test(lowerSentence)) {
-    tags.push("脱落");
-    notes.push("子音の一部が落ちて短く聞こえる。");
-  }
-
-  if (/\byou\b|\bto\b|\bof\b|\band\b|\bfor\b|\ba\b/i.test(lowerSentence)) {
-    tags.push("弱形");
-    notes.push("機能語が弱く短くなる。");
-  }
-
-  if (/\b[a-z]+t [aeiou]/i.test(lowerSentence) || /\bit\b/i.test(lowerSentence)) {
+  if (/\b[a-z]+t [aeiou]/i.test(lowerSentence) || /\b(it|right)\b/i.test(lowerSentence)) {
     tags.push("flap T");
     notes.push("t/d が軽く弾かれて聞こえる可能性がある。");
   }
 
-  const kana = normalized
-    .map((word) => KANA_MAP[normalizeWord(word)] ?? normalizeWord(word).toUpperCase())
-    .join(" ");
-
-  const translation = normalized
-    .map((word) => AUTO_TRANSLATIONS[normalizeWord(word)] ?? "")
-    .filter(Boolean)
-    .join(" ")
-    .trim();
+  const heardAs = heardTokens.join(" ").replace(/\s+([?.!,])/g, "$1");
+  const kana = kanaTokens.join(" ");
+  const translation = translationTokens.join(" ").trim();
 
   return {
     heardAs,
