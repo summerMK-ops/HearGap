@@ -466,7 +466,7 @@ const pickEnglishVoice = (voices, preferredVoiceURI) => {
 
 function EditorCard({ text, onTextChange, onApply, sentenceCount }) {
   return (
-    <section className="card">
+    <section className="card compact-card">
       <p className="section-label">Source Text</p>
       <h2>英文を貼り付けて Sync View を作る</h2>
       <p className="muted">
@@ -490,7 +490,7 @@ function EditorCard({ text, onTextChange, onApply, sentenceCount }) {
 
 function SentenceRail({ sentences, activeIndex, onSelect }) {
   return (
-    <section className="card">
+    <section className="card compact-card">
       <p className="section-label">Sentences</p>
       <div className="sentence-rail">
         {sentences.map((sentence, index) => (
@@ -606,6 +606,8 @@ function PracticePanel({
   const [recordedUrl, setRecordedUrl] = useState("");
   const [englishVoices, setEnglishVoices] = useState([]);
   const [englishVoice, setEnglishVoice] = useState(null);
+  const [helperOpen, setHelperOpen] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(false);
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
   const timeoutRef = useRef([]);
@@ -867,17 +869,6 @@ function PracticePanel({
         {helper.notes ? <p className="helper-notes">{helper.notes}</p> : null}
       </div>
 
-      <section className="helper-card">
-        <p className="section-label">Helper Editor</p>
-        <h3>カタカナ・脱落・日本語をこの文に付ける</h3>
-        <div className="editor-actions helper-actions">
-          <button className="ghost-button" onClick={onAutoFill}>
-            自動補助を再生成
-          </button>
-        </div>
-        <HelperEditor helper={helper} onChange={onHelperChange} />
-      </section>
-
       <div className="control-grid">
         <div>
           <p className="control-label">ループ</p>
@@ -935,44 +926,65 @@ function PracticePanel({
         </div>
       </div>
 
-      <div className="lesson-layout bottom">
-        <div className="card inner-card">
-          <p className="section-label">Shadowing</p>
-          <h3>録音して比較する</h3>
-          <button className="primary-button" onClick={toggleRecording}>
-            {recordingState === "recording" ? "録音停止" : "録音開始"}
-          </button>
-          {recordingState === "blocked" ? (
-            <p className="error-text">マイク権限が必要です。ブラウザで許可してください。</p>
-          ) : null}
-          {audioSource.url ? <audio controls src={audioSource.url} className="audio-player" /> : null}
-          {recordedUrl ? <audio controls src={recordedUrl} className="audio-player" /> : null}
-        </div>
-
-        <div className="card inner-card">
-          <p className="section-label">Dictation</p>
-          <h3>聞こえた通りに入力</h3>
-          <textarea
-            value={dictation}
-            onChange={(event) => setDictation(event.target.value)}
-            placeholder="例: whaddaya doing"
-          />
-          <div className="dictation-actions">
-            <button className="primary-button" onClick={() => setShowResult(true)}>
-              答え合わせ
+      <details className="mobile-panel helper-panel" open={helperOpen} onToggle={(event) => setHelperOpen(event.currentTarget.open)}>
+        <summary className="panel-summary">
+          <span>補助情報を編集</span>
+          <span>{helperOpen ? "閉じる" : "開く"}</span>
+        </summary>
+        <section className="helper-card helper-card-open">
+          <div className="editor-actions helper-actions">
+            <button className="ghost-button" onClick={onAutoFill}>
+              自動補助を再生成
             </button>
           </div>
-          {showResult ? (
-            <div className="result-line">
-              {dictationResult.map((item, index) => (
-                <span key={`${item.word}-${index}`} className={item.ok ? "ok" : "ng"}>
-                  {item.word}
-                </span>
-              ))}
+          <HelperEditor helper={helper} onChange={onHelperChange} />
+        </section>
+      </details>
+
+      <details className="mobile-panel tools-panel" open={toolsOpen} onToggle={(event) => setToolsOpen(event.currentTarget.open)}>
+        <summary className="panel-summary">
+          <span>録音とディクテーション</span>
+          <span>{toolsOpen ? "閉じる" : "開く"}</span>
+        </summary>
+        <div className="lesson-layout bottom compact-tools">
+          <div className="card inner-card">
+            <p className="section-label">Shadowing</p>
+            <h3>録音して比較する</h3>
+            <button className="primary-button" onClick={toggleRecording}>
+              {recordingState === "recording" ? "録音停止" : "録音開始"}
+            </button>
+            {recordingState === "blocked" ? (
+              <p className="error-text">マイク権限が必要です。ブラウザで許可してください。</p>
+            ) : null}
+            {audioSource.url ? <audio controls src={audioSource.url} className="audio-player" /> : null}
+            {recordedUrl ? <audio controls src={recordedUrl} className="audio-player" /> : null}
+          </div>
+
+          <div className="card inner-card">
+            <p className="section-label">Dictation</p>
+            <h3>聞こえた通りに入力</h3>
+            <textarea
+              value={dictation}
+              onChange={(event) => setDictation(event.target.value)}
+              placeholder="例: whaddaya doing"
+            />
+            <div className="dictation-actions">
+              <button className="primary-button" onClick={() => setShowResult(true)}>
+                答え合わせ
+              </button>
             </div>
-          ) : null}
+            {showResult ? (
+              <div className="result-line">
+                {dictationResult.map((item, index) => (
+                  <span key={`${item.word}-${index}`} className={item.ok ? "ok" : "ng"}>
+                    {item.word}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </div>
         </div>
-      </div>
+      </details>
     </section>
   );
 }
@@ -992,6 +1004,7 @@ export default function App() {
   });
   const [activeIndex, setActiveIndex] = useState(0);
   const [audioBySentence, setAudioBySentence] = useState({});
+  const [sourceOpen, setSourceOpen] = useState(false);
 
   const sentences = useMemo(() => splitIntoSentences(appliedText), [appliedText]);
   const draftSentences = useMemo(() => splitIntoSentences(sourceText), [sourceText]);
@@ -1049,12 +1062,18 @@ export default function App() {
 
       <div className="workspace-grid">
         <div className="workspace-sidebar">
-          <EditorCard
-            text={sourceText}
-            onTextChange={setSourceText}
-            onApply={applySourceText}
-            sentenceCount={draftSentences.length}
-          />
+          <details className="mobile-panel source-panel" open={sourceOpen} onToggle={(event) => setSourceOpen(event.currentTarget.open)}>
+            <summary className="panel-summary">
+              <span>英文ソース</span>
+              <span>{sourceOpen ? "閉じる" : "開く"}</span>
+            </summary>
+            <EditorCard
+              text={sourceText}
+              onTextChange={setSourceText}
+              onApply={applySourceText}
+              sentenceCount={draftSentences.length}
+            />
+          </details>
           <SentenceRail sentences={sentences} activeIndex={activeIndex} onSelect={setActiveIndex} />
         </div>
 
