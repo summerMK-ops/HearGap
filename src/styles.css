@@ -26,6 +26,10 @@ select {
   font: inherit;
 }
 
+input {
+  font: inherit;
+}
+
 button {
   cursor: pointer;
   border: none;
@@ -346,6 +350,39 @@ textarea {
   margin-top: 24px;
 }
 
+.helper-card {
+  margin-top: 24px;
+  padding: 18px 0 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.helper-editor {
+  display: grid;
+  gap: 18px;
+}
+
+.helper-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.text-input {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 16px;
+  color: #f5f1e8;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.helper-notes {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
 .upload-button {
   display: inline-flex;
   align-items: center;
@@ -383,6 +420,10 @@ textarea {
   }
 
   .control-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .helper-grid {
     grid-template-columns: 1fr;
   }
 

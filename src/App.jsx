@@ -4,10 +4,43 @@ const LOOP_OPTIONS = [1, 3];
 const SPEED_OPTIONS = [1, 0.8, 0.6];
 const STORAGE_KEY = "heargap-workspace";
 const VOICE_STORAGE_KEY = "heargap-voice-uri";
+const TAG_OPTIONS = ["連結", "脱落", "弱形", "flap T", "省略", "強勢"];
 
 const DEFAULT_TEXT = `What are you doing?
 I didn't get a chance to call you.
 A lot of people missed it.`;
+
+const DEFAULT_HELPERS = {
+  "What are you doing?": {
+    heardAs: "Whaddaya doing?",
+    kana: "ワダヤ ドゥーイン",
+    translation: "何してるの？",
+    notes: "what are がつながって、you が ヤ に弱く聞こえる。",
+    tags: ["連結", "弱形", "脱落"],
+  },
+  "I didn't get a chance to call you.": {
+    heardAs: "I din get a chance t'call ya.",
+    kana: "アイ ディン ゲラ チャンス タコール ヤ",
+    translation: "電話する時間が取れなかった。",
+    notes: "didn't の t が落ち、to call が タコール のようにつながる。",
+    tags: ["脱落", "連結", "弱形"],
+  },
+  "A lot of people missed it.": {
+    heardAs: "Alotta people misdit.",
+    kana: "アロラ ピーポー ミスディッ",
+    translation: "多くの人がそれを聞き逃した。",
+    notes: "a lot of が アロラ に縮み、missed it の d+i がなめらかにつながる。",
+    tags: ["連結", "省略", "flap T"],
+  },
+};
+
+const emptyHelper = () => ({
+  heardAs: "",
+  kana: "",
+  translation: "",
+  notes: "",
+  tags: [],
+});
 
 const tokenize = (text) =>
   text
@@ -65,7 +98,10 @@ const getEnglishVoices = () => {
 
   return window.speechSynthesis
     .getVoices()
-    .filter((voice) => voice.lang?.toLowerCase().startsWith("en") || /english|google|microsoft/i.test(voice.name))
+    .filter(
+      (voice) =>
+        voice.lang?.toLowerCase().startsWith("en") || /english|google|microsoft/i.test(voice.name),
+    )
     .sort((a, b) => scoreEnglishVoice(b) - scoreEnglishVoice(a));
 };
 
@@ -90,7 +126,7 @@ function EditorCard({ text, onTextChange, onApply, sentenceCount }) {
       <p className="section-label">Source Text</p>
       <h2>英文を貼り付けて Sync View を作る</h2>
       <p className="muted">
-        改行か句読点で文分割します。教材一覧は持たず、この画面だけでそのまま練習できます。
+        改行か句読点で文分割します。貼り付けた英文に対して、1文ずつ音の補助情報を付けられます。
       </p>
       <textarea
         className="source-textarea"
@@ -127,8 +163,78 @@ function SentenceRail({ sentences, activeIndex, onSelect }) {
   );
 }
 
+function HelperEditor({ helper, onChange }) {
+  const toggleTag = (tag) => {
+    const nextTags = helper.tags.includes(tag)
+      ? helper.tags.filter((item) => item !== tag)
+      : [...helper.tags, tag];
+
+    onChange({ ...helper, tags: nextTags });
+  };
+
+  return (
+    <div className="helper-editor">
+      <div className="helper-grid">
+        <div>
+          <p className="control-label">実際の音</p>
+          <input
+            className="text-input"
+            value={helper.heardAs}
+            onChange={(event) => onChange({ ...helper, heardAs: event.target.value })}
+            placeholder="Whaddaya doing?"
+          />
+        </div>
+        <div>
+          <p className="control-label">カタカナ</p>
+          <input
+            className="text-input"
+            value={helper.kana}
+            onChange={(event) => onChange({ ...helper, kana: event.target.value })}
+            placeholder="ワダヤ ドゥーイン"
+          />
+        </div>
+        <div>
+          <p className="control-label">日本語</p>
+          <input
+            className="text-input"
+            value={helper.translation}
+            onChange={(event) => onChange({ ...helper, translation: event.target.value })}
+            placeholder="何してるの？"
+          />
+        </div>
+        <div>
+          <p className="control-label">音変化メモ</p>
+          <input
+            className="text-input"
+            value={helper.notes}
+            onChange={(event) => onChange({ ...helper, notes: event.target.value })}
+            placeholder="what are がつながる"
+          />
+        </div>
+      </div>
+
+      <div>
+        <p className="control-label">音変化タグ</p>
+        <div className="option-row">
+          {TAG_OPTIONS.map((tag) => (
+            <button
+              key={tag}
+              className={helper.tags.includes(tag) ? "option active" : "option"}
+              onClick={() => toggleTag(tag)}
+            >
+              {tag}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PracticePanel({
   sentence,
+  helper,
+  onHelperChange,
   currentIndex,
   totalSentences,
   onPrev,
@@ -391,10 +497,26 @@ function PracticePanel({
       <div className="sync-panel">
         <p className="section-label">Sync View</p>
         <h3>{sentence}</h3>
-        <p className="muted">
-          まずは貼り付け英文をそのまま 1 文単位で練習します。ネイティブ感を上げたい場合は下で実音声をアップロードしてください。
-        </p>
+        {helper.heardAs ? <p className="heard-as">{helper.heardAs}</p> : null}
+        {helper.kana ? <p className="kana-line">{helper.kana}</p> : null}
+        {helper.translation ? <p className="translation">{helper.translation}</p> : null}
+        {helper.tags.length ? (
+          <div className="tag-list">
+            {helper.tags.map((tag) => (
+              <span key={tag} className="chip">
+                {tag}
+              </span>
+            ))}
+          </div>
+        ) : null}
+        {helper.notes ? <p className="helper-notes">{helper.notes}</p> : null}
       </div>
+
+      <section className="helper-card">
+        <p className="section-label">Helper Editor</p>
+        <h3>カタカナ・脱落・日本語をこの文に付ける</h3>
+        <HelperEditor helper={helper} onChange={onHelperChange} />
+      </section>
 
       <div className="control-grid">
         <div>
@@ -460,11 +582,11 @@ function PracticePanel({
           <button className="primary-button" onClick={toggleRecording}>
             {recordingState === "recording" ? "録音停止" : "録音開始"}
           </button>
-          {recordingState === "blocked" && (
+          {recordingState === "blocked" ? (
             <p className="error-text">マイク権限が必要です。ブラウザで許可してください。</p>
-          )}
-          {audioSource.url && <audio controls src={audioSource.url} className="audio-player" />}
-          {recordedUrl && <audio controls src={recordedUrl} className="audio-player" />}
+          ) : null}
+          {audioSource.url ? <audio controls src={audioSource.url} className="audio-player" /> : null}
+          {recordedUrl ? <audio controls src={recordedUrl} className="audio-player" /> : null}
         </div>
 
         <div className="card inner-card">
@@ -480,7 +602,7 @@ function PracticePanel({
               答え合わせ
             </button>
           </div>
-          {showResult && (
+          {showResult ? (
             <div className="result-line">
               {dictationResult.map((item, index) => (
                 <span key={`${item.word}-${index}`} className={item.ok ? "ok" : "ng"}>
@@ -488,7 +610,7 @@ function PracticePanel({
                 </span>
               ))}
             </div>
-          )}
+          ) : null}
         </div>
       </div>
     </section>
@@ -504,12 +626,17 @@ export default function App() {
     const saved = window.localStorage.getItem(STORAGE_KEY);
     return saved ? JSON.parse(saved).appliedText ?? DEFAULT_TEXT : DEFAULT_TEXT;
   });
+  const [helpersBySentence, setHelpersBySentence] = useState(() => {
+    const saved = window.localStorage.getItem(STORAGE_KEY);
+    return saved ? JSON.parse(saved).helpersBySentence ?? DEFAULT_HELPERS : DEFAULT_HELPERS;
+  });
   const [activeIndex, setActiveIndex] = useState(0);
   const [audioBySentence, setAudioBySentence] = useState({});
 
   const sentences = useMemo(() => splitIntoSentences(appliedText), [appliedText]);
   const draftSentences = useMemo(() => splitIntoSentences(sourceText), [sourceText]);
   const activeSentence = sentences[activeIndex] ?? "";
+  const activeHelper = helpersBySentence[activeSentence] ?? emptyHelper();
 
   useEffect(() => {
     window.localStorage.setItem(
@@ -517,9 +644,10 @@ export default function App() {
       JSON.stringify({
         sourceText,
         appliedText,
+        helpersBySentence,
       }),
     );
-  }, [sourceText, appliedText]);
+  }, [sourceText, appliedText, helpersBySentence]);
 
   useEffect(() => {
     if (activeIndex > sentences.length - 1) {
@@ -528,19 +656,34 @@ export default function App() {
   }, [activeIndex, sentences.length]);
 
   const applySourceText = () => {
+    const nextSentences = splitIntoSentences(sourceText);
     setAppliedText(sourceText);
     setActiveIndex(0);
     setAudioBySentence({});
+    setHelpersBySentence((current) => {
+      const nextHelpers = {};
+      nextSentences.forEach((sentence) => {
+        nextHelpers[sentence] = current[sentence] ?? DEFAULT_HELPERS[sentence] ?? emptyHelper();
+      });
+      return nextHelpers;
+    });
+  };
+
+  const updateActiveHelper = (value) => {
+    setHelpersBySentence((current) => ({
+      ...current,
+      [activeSentence]: value,
+    }));
   };
 
   return (
     <div className="screen single-page">
       <section className="hero card">
         <p className="eyebrow">HearGap</p>
-        <h1>貼り付けた英文を、そのまま聞ける形にする。</h1>
+        <h1>貼り付けた英文に、音の補助レイヤーを付ける。</h1>
         <p className="hero-copy">
-          教材一覧は持たず、英文を貼るだけで 1 文ごとの Sync View と練習フローを作る構成に変えました。
-          音声は実ファイルを優先し、ない場合だけ英語TTSを使います。
+          1文ごとに「実際の音」「カタカナ」「日本語」「音変化タグ」「脱落メモ」を持たせて、
+          単なる英文表示ではなく、聞こえ方の差まで見える Sync View にします。
         </p>
       </section>
 
@@ -558,6 +701,8 @@ export default function App() {
         {activeSentence ? (
           <PracticePanel
             sentence={activeSentence}
+            helper={activeHelper}
+            onHelperChange={updateActiveHelper}
             currentIndex={activeIndex}
             totalSentences={sentences.length}
             onPrev={() => setActiveIndex((current) => Math.max(current - 1, 0))}
