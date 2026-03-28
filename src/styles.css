@@ -41,6 +41,11 @@ button {
   padding: 28px 0 40px;
 }
 
+.single-page {
+  display: grid;
+  gap: 18px;
+}
+
 .card {
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(22, 18, 16, 0.78);
@@ -114,6 +119,18 @@ button {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.workspace-grid {
+  display: grid;
+  grid-template-columns: 360px minmax(0, 1fr);
+  gap: 18px;
+}
+
+.workspace-sidebar {
+  display: grid;
+  gap: 18px;
+  align-self: start;
+}
+
 .lesson-list,
 .review-list {
   display: grid;
@@ -148,6 +165,13 @@ button {
   padding: 12px 18px;
   border-radius: 16px;
   transition: transform 180ms ease, background 180ms ease;
+}
+
+.primary-button:disabled,
+.ghost-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
 }
 
 .primary-button {
@@ -204,6 +228,13 @@ button {
 .control-group {
   display: grid;
   gap: 16px;
+  margin-top: 24px;
+}
+
+.control-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
   margin-top: 24px;
 }
 
@@ -276,13 +307,82 @@ textarea {
   margin-top: 16px;
 }
 
+.editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.source-textarea {
+  min-height: 220px;
+}
+
+.sentence-rail {
+  display: grid;
+  gap: 10px;
+}
+
+.sentence-chip {
+  width: 100%;
+  text-align: left;
+  padding: 12px 14px;
+  border-radius: 18px;
+  color: #f5f1e8;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.sentence-chip.active {
+  background: rgba(245, 185, 111, 0.16);
+  border-color: rgba(245, 185, 111, 0.35);
+}
+
+.practice-card {
+  min-height: 100%;
+}
+
+.sync-panel {
+  margin-top: 24px;
+}
+
+.upload-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 18px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  cursor: pointer;
+}
+
+.upload-button input {
+  display: none;
+}
+
+.inner-card {
+  padding: 20px;
+}
+
+.empty-card {
+  min-height: 420px;
+  display: grid;
+  align-content: center;
+}
+
 .error-text {
   color: #ffb0a6;
 }
 
 @media (max-width: 860px) {
+  .workspace-grid,
   .dashboard-grid,
   .lesson-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .control-grid {
     grid-template-columns: 1fr;
   }
 

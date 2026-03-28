@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { lessonLibrary } from "./data";
 
 const LOOP_OPTIONS = [1, 3];
 const SPEED_OPTIONS = [1, 0.8, 0.6];
-const STORAGE_KEY = "heargap-mvp-state";
+const STORAGE_KEY = "heargap-workspace";
 const VOICE_STORAGE_KEY = "heargap-voice-uri";
+
+const DEFAULT_TEXT = `What are you doing?
+I didn't get a chance to call you.
+A lot of people missed it.`;
 
 const tokenize = (text) =>
   text
@@ -21,6 +24,19 @@ const compareDictation = (input, answer) => {
     word,
     ok: guessed[index] === word,
   }));
+};
+
+const splitIntoSentences = (text) => {
+  const normalized = text.replace(/\r\n/g, "\n").trim();
+  if (!normalized) {
+    return [];
+  }
+
+  return normalized
+    .split(/\n+/)
+    .flatMap((line) => line.match(/[^.!?\n]+[.!?]?/g) ?? [])
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
 };
 
 const scoreEnglishVoice = (voice) => {
@@ -47,12 +63,8 @@ const getEnglishVoices = () => {
     return [];
   }
 
-  const voices = window.speechSynthesis.getVoices();
-  if (!voices.length) {
-    return [];
-  }
-
-  return voices
+  return window.speechSynthesis
+    .getVoices()
     .filter((voice) => voice.lang?.toLowerCase().startsWith("en") || /english|google|microsoft/i.test(voice.name))
     .sort((a, b) => scoreEnglishVoice(b) - scoreEnglishVoice(a));
 };
@@ -72,101 +84,82 @@ const pickEnglishVoice = (voices, preferredVoiceURI) => {
   return voices[0] ?? null;
 };
 
-function HomeScreen({ lessons, onStart, stats }) {
-  const tagSummary = Object.entries(stats.tagWeakness).sort((a, b) => b[1] - a[1]);
-
+function EditorCard({ text, onTextChange, onApply, sentenceCount }) {
   return (
-    <div className="screen">
-      <section className="hero card">
-        <p className="eyebrow">HearGap</p>
-        <h1>知っている英語を、聞こえる英語に変える。</h1>
-        <p className="hero-copy">
-          単語知識ではなく、実際の音の崩れ方に慣れるための英語リスニングMVPです。
-          文字と音のズレを見える化して、1文ずつ詰めます。
-        </p>
-        <div className="hero-points">
-          <span>音声 + 英文 + 日本語の同期</span>
-          <span>実音表示と音変化タグ</span>
-          <span>ループ・録音・ディクテーション</span>
-        </div>
-      </section>
-
-      <section className="dashboard-grid">
-        <div className="card">
-          <p className="section-label">今日の練習</p>
-          <h2>{stats.completedSentences}文クリア</h2>
-          <p>聞こえなかった箇所を残しながら、1文フローを固定して反復します。</p>
-        </div>
-        <div className="card">
-          <p className="section-label">苦手な音変化</p>
-          <div className="tag-list">
-            {tagSummary.length ? (
-              tagSummary.slice(0, 4).map(([tag, count]) => (
-                <span key={tag} className="chip warning">
-                  {tag} {count}
-                </span>
-              ))
-            ) : (
-              <span className="muted">まだ分析データはありません</span>
-            )}
-          </div>
-        </div>
-      </section>
-
-      <section className="lesson-list">
-        {lessons.map((lesson) => (
-          <article key={lesson.id} className="card lesson-card">
-            <div>
-              <p className="section-label">{lesson.level}</p>
-              <h3>{lesson.title}</h3>
-              <p>{lesson.description}</p>
-            </div>
-            <div className="lesson-meta">
-              <span>{lesson.sentences.length} sentences</span>
-              <button className="primary-button" onClick={() => onStart(lesson.id)}>
-                学習を始める
-              </button>
-            </div>
-          </article>
-        ))}
-      </section>
-    </div>
+    <section className="card">
+      <p className="section-label">Source Text</p>
+      <h2>英文を貼り付けて Sync View を作る</h2>
+      <p className="muted">
+        改行か句読点で文分割します。教材一覧は持たず、この画面だけでそのまま練習できます。
+      </p>
+      <textarea
+        className="source-textarea"
+        value={text}
+        onChange={(event) => onTextChange(event.target.value)}
+        placeholder="What are you doing?"
+      />
+      <div className="editor-actions">
+        <button className="primary-button" onClick={onApply}>
+          Sync View を更新
+        </button>
+        <span className="muted">{sentenceCount}文を検出</span>
+      </div>
+    </section>
   );
 }
 
-function LessonScreen({
-  lesson,
-  sentenceIndex,
-  onBack,
-  onComplete,
-  progress,
-  setProgress,
+function SentenceRail({ sentences, activeIndex, onSelect }) {
+  return (
+    <section className="card">
+      <p className="section-label">Sentences</p>
+      <div className="sentence-rail">
+        {sentences.map((sentence, index) => (
+          <button
+            key={`${sentence}-${index}`}
+            className={index === activeIndex ? "sentence-chip active" : "sentence-chip"}
+            onClick={() => onSelect(index)}
+          >
+            {index + 1}. {sentence}
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function PracticePanel({
+  sentence,
+  currentIndex,
+  totalSentences,
+  onPrev,
+  onNext,
+  audioSource,
+  setAudioSource,
 }) {
-  const sentence = lesson.sentences[sentenceIndex];
-  const words = useMemo(() => sentence.english.split(" "), [sentence.english]);
   const [highlightIndex, setHighlightIndex] = useState(-1);
   const [isPlaying, setIsPlaying] = useState(false);
   const [loopCount, setLoopCount] = useState(1);
   const [speed, setSpeed] = useState(1);
-  const [dictation, setDictation] = useState(progress.dictation ?? "");
-  const [showResult, setShowResult] = useState(Boolean(progress.dictationChecked));
+  const [dictation, setDictation] = useState("");
+  const [showResult, setShowResult] = useState(false);
   const [recordingState, setRecordingState] = useState("idle");
-  const [recordedUrl, setRecordedUrl] = useState(progress.recordedUrl ?? "");
+  const [recordedUrl, setRecordedUrl] = useState("");
   const [englishVoices, setEnglishVoices] = useState([]);
   const [englishVoice, setEnglishVoice] = useState(null);
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
   const timeoutRef = useRef([]);
   const streamRef = useRef(null);
+  const audioRef = useRef(null);
+
+  const words = useMemo(() => sentence.split(" "), [sentence]);
+  const dictationResult = useMemo(() => compareDictation(dictation, sentence), [dictation, sentence]);
 
   useEffect(() => {
     const updateVoice = () => {
       const voices = getEnglishVoices();
       setEnglishVoices(voices);
-
-      const preferredVoiceURI = window.localStorage.getItem(VOICE_STORAGE_KEY);
-      const voice = pickEnglishVoice(voices, preferredVoiceURI);
-      setEnglishVoice(voice);
+      setEnglishVoice(pickEnglishVoice(voices, window.localStorage.getItem(VOICE_STORAGE_KEY)));
     };
 
     updateVoice();
@@ -177,43 +170,91 @@ function LessonScreen({
     };
   }, []);
 
-  const handleVoiceChange = (event) => {
-    const voiceURI = event.target.value;
-    window.localStorage.setItem(VOICE_STORAGE_KEY, voiceURI);
-    const nextVoice = englishVoices.find((voice) => voice.voiceURI === voiceURI) ?? null;
-    setEnglishVoice(nextVoice);
-  };
-
   useEffect(() => {
-    setDictation(progress.dictation ?? "");
-    setShowResult(Boolean(progress.dictationChecked));
-    setRecordedUrl(progress.recordedUrl ?? "");
     setHighlightIndex(-1);
     setIsPlaying(false);
+    setDictation("");
+    setShowResult(false);
+    setRecordedUrl("");
+    setRecordingState("idle");
+    window.speechSynthesis.cancel();
+    timeoutRef.current.forEach((id) => window.clearTimeout(id));
+    timeoutRef.current = [];
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
+  }, [sentence]);
+
+  useEffect(() => {
     return () => {
       window.speechSynthesis.cancel();
       timeoutRef.current.forEach((id) => window.clearTimeout(id));
-      timeoutRef.current = [];
+      streamRef.current?.getTracks().forEach((track) => track.stop());
     };
-  }, [sentence.id, progress.dictation, progress.dictationChecked, progress.recordedUrl]);
+  }, []);
 
-  const dictationResult = useMemo(
-    () => compareDictation(dictation, sentence.english),
-    [dictation, sentence.english],
-  );
+  const scheduleHighlights = (durationMs, gapMs = 0) => {
+    const totalWords = Math.max(words.length, 1);
+    for (let loop = 0; loop < loopCount; loop += 1) {
+      const startOffset = loop * (durationMs + gapMs);
+      words.forEach((_, index) => {
+        const wordOffset = startOffset + (durationMs / totalWords) * index;
+        const highlightId = window.setTimeout(() => setHighlightIndex(index), wordOffset);
+        timeoutRef.current.push(highlightId);
+      });
+    }
+  };
 
-  const runPlayback = () => {
+  const runNativeAudioPlayback = () => {
+    if (!audioSource.url) {
+      return false;
+    }
+
+    timeoutRef.current.forEach((id) => window.clearTimeout(id));
+    timeoutRef.current = [];
+    setIsPlaying(true);
+
+    const audio = new Audio(audioSource.url);
+    audioRef.current = audio;
+    audio.playbackRate = speed;
+    const durationMs = Math.max((audioSource.duration || 2.2) * 1000 / speed, 1800);
+    scheduleHighlights(durationMs, 500);
+
+    const playLoop = (count) => {
+      audio.currentTime = 0;
+      audio.playbackRate = speed;
+      audio.play().catch(() => {
+        setIsPlaying(false);
+      });
+
+      audio.onended = () => {
+        if (count + 1 < loopCount) {
+          const nextId = window.setTimeout(() => playLoop(count + 1), 500);
+          timeoutRef.current.push(nextId);
+          return;
+        }
+
+        setIsPlaying(false);
+        setHighlightIndex(-1);
+      };
+    };
+
+    playLoop(0);
+    return true;
+  };
+
+  const runTtsPlayback = () => {
     window.speechSynthesis.cancel();
     timeoutRef.current.forEach((id) => window.clearTimeout(id));
     timeoutRef.current = [];
     setIsPlaying(true);
 
-    const totalWords = words.length;
-    const baseDuration = Math.max(2200, sentence.english.length * 90);
-    const sentenceDuration = baseDuration / speed;
+    const durationMs = Math.max(2200, sentence.length * 90) / speed;
+    scheduleHighlights(durationMs, 500);
 
     for (let loop = 0; loop < loopCount; loop += 1) {
-      const utterance = new SpeechSynthesisUtterance(sentence.english);
+      const utterance = new SpeechSynthesisUtterance(sentence);
       utterance.lang = englishVoice?.lang ?? "en-US";
       utterance.rate = speed;
       utterance.pitch = 1;
@@ -231,16 +272,47 @@ function LessonScreen({
         }
       };
 
-      const startOffset = loop * (sentenceDuration + 500);
+      const startOffset = loop * (durationMs + 500);
       const speakId = window.setTimeout(() => window.speechSynthesis.speak(utterance), startOffset);
       timeoutRef.current.push(speakId);
-
-      words.forEach((_, index) => {
-        const wordOffset = startOffset + (sentenceDuration / totalWords) * index;
-        const highlightId = window.setTimeout(() => setHighlightIndex(index), wordOffset);
-        timeoutRef.current.push(highlightId);
-      });
     }
+  };
+
+  const runPlayback = () => {
+    if (runNativeAudioPlayback()) {
+      return;
+    }
+    runTtsPlayback();
+  };
+
+  const handleVoiceChange = (event) => {
+    const voiceURI = event.target.value;
+    window.localStorage.setItem(VOICE_STORAGE_KEY, voiceURI);
+    setEnglishVoice(englishVoices.find((voice) => voice.voiceURI === voiceURI) ?? null);
+  };
+
+  const handleAudioUpload = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    const url = URL.createObjectURL(file);
+    const probe = new Audio(url);
+    probe.onloadedmetadata = () => {
+      setAudioSource({
+        name: file.name,
+        url,
+        duration: probe.duration || 0,
+      });
+    };
+    probe.onerror = () => {
+      setAudioSource({
+        name: file.name,
+        url,
+        duration: 0,
+      });
+    };
   };
 
   const toggleRecording = async () => {
@@ -269,186 +341,133 @@ function LessonScreen({
         const url = URL.createObjectURL(blob);
         setRecordedUrl(url);
         setRecordingState("done");
-        setProgress({
-          ...progress,
-          recordedUrl: url,
-        });
       };
 
       mediaRecorderRef.current = recorder;
       recorder.start();
       setRecordingState("recording");
-    } catch (error) {
+    } catch {
       setRecordingState("blocked");
     }
   };
 
-  const submitDictation = () => {
-    setShowResult(true);
-    setProgress({
-      ...progress,
-      dictation,
-      dictationChecked: true,
-      mistakes: dictationResult.filter((item) => !item.ok).length,
-      tags: sentence.tags,
-    });
-  };
-
-  const finishSentence = () => {
-    const mistakes = showResult
-      ? dictationResult.filter((item) => !item.ok).length
-      : tokenize(sentence.english).length;
-
-    onComplete({
-      sentenceId: sentence.id,
-      sentence,
-      mistakes,
-      dictation,
-      recordedUrl,
-    });
-  };
-
   return (
-    <div className="screen">
-      <button className="ghost-button" onClick={onBack}>
-        ← 教材一覧へ
-      </button>
-
-      <section className="card progress-card">
+    <section className="card practice-card">
+      <div className="player-top">
         <div>
-          <p className="section-label">
-            {lesson.title} / {sentenceIndex + 1} of {lesson.sentences.length}
-          </p>
-          <h2>1文フロー</h2>
+          <p className="section-label">Lesson</p>
+          <h2>
+            {currentIndex + 1} / {totalSentences}
+          </h2>
         </div>
-        <ol className="flow-list">
-          <li>まず音だけ聞く</li>
-          <li>聞こえた内容を予想する</li>
-          <li>英文を見る</li>
-          <li>実際の音の形を見る</li>
-          <li>もう一回聞く</li>
-          <li>シャドーイングする</li>
-          <li>ディクテーションする</li>
-          <li>復習保存</li>
-        </ol>
-      </section>
+        <div className="editor-actions">
+          <button className="ghost-button" onClick={onPrev} disabled={currentIndex === 0}>
+            前へ
+          </button>
+          <button className="ghost-button" onClick={onNext} disabled={currentIndex === totalSentences - 1}>
+            次へ
+          </button>
+        </div>
+      </div>
 
-      <section className="lesson-layout">
-        <div className="card player-card">
-          <div className="player-top">
-            <div>
-              <p className="section-label">Playback</p>
-              <h3>{isPlaying ? "再生中" : "待機中"}</h3>
-            </div>
-            <button className="primary-button" onClick={runPlayback}>
-              再生する
-            </button>
-          </div>
+      <div className="player-top">
+        <div>
+          <p className="section-label">Playback</p>
+          <h3>{isPlaying ? "再生中" : "待機中"}</h3>
+        </div>
+        <button className="primary-button" onClick={runPlayback}>
+          再生する
+        </button>
+      </div>
 
-          <div className="player-bar">
-            {words.map((word, index) => (
-              <span
-                key={`${word}-${index}`}
-                className={index === highlightIndex ? "word active" : "word"}
+      <div className="player-bar">
+        {words.map((word, index) => (
+          <span key={`${word}-${index}`} className={index === highlightIndex ? "word active" : "word"}>
+            {word}
+          </span>
+        ))}
+      </div>
+
+      <div className="sync-panel">
+        <p className="section-label">Sync View</p>
+        <h3>{sentence}</h3>
+        <p className="muted">
+          まずは貼り付け英文をそのまま 1 文単位で練習します。ネイティブ感を上げたい場合は下で実音声をアップロードしてください。
+        </p>
+      </div>
+
+      <div className="control-grid">
+        <div>
+          <p className="control-label">ループ</p>
+          <div className="option-row">
+            {LOOP_OPTIONS.map((value) => (
+              <button
+                key={value}
+                className={value === loopCount ? "option active" : "option"}
+                onClick={() => setLoopCount(value)}
               >
-                {word}
-              </span>
-            ))}
-          </div>
-
-          <div className="control-group">
-            <div>
-              <p className="control-label">ループ</p>
-              <div className="option-row">
-                {LOOP_OPTIONS.map((value) => (
-                  <button
-                    key={value}
-                    className={value === loopCount ? "option active" : "option"}
-                    onClick={() => setLoopCount(value)}
-                  >
-                    {value}回
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div>
-              <p className="control-label">速度</p>
-              <div className="option-row">
-                {SPEED_OPTIONS.map((value) => (
-                  <button
-                    key={value}
-                    className={value === speed ? "option active" : "option"}
-                    onClick={() => setSpeed(value)}
-                  >
-                    {value}x
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div>
-              <p className="control-label">Voice</p>
-              {englishVoices.length ? (
-                <select
-                  className="voice-select"
-                  value={englishVoice?.voiceURI ?? ""}
-                  onChange={handleVoiceChange}
-                >
-                  {englishVoices.map((voice) => (
-                    <option key={voice.voiceURI} value={voice.voiceURI}>
-                      {voice.name} ({voice.lang})
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <p className="error-text">
-                  英語音声が見つかりません。OSかブラウザに英語音声を追加すると改善します。
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="card transcript-card">
-          <p className="section-label">Sync View</p>
-          <h3>{sentence.english}</h3>
-          <p className="heard-as">{sentence.heardAs}</p>
-          <p className="kana-line">{sentence.kana}</p>
-          <p className="translation">{sentence.japanese}</p>
-          <div className="tag-list">
-            {sentence.tags.map((tag) => (
-              <span key={tag} className="chip">
-                {tag}
-              </span>
-            ))}
-          </div>
-          <div className="breakdown-list">
-            {sentence.breakdown.map((item) => (
-              <div key={item.from} className="breakdown-item">
-                <span>{item.from}</span>
-                <strong>{item.to}</strong>
-              </div>
+                {value}回
+              </button>
             ))}
           </div>
         </div>
-      </section>
+        <div>
+          <p className="control-label">速度</p>
+          <div className="option-row">
+            {SPEED_OPTIONS.map((value) => (
+              <button
+                key={value}
+                className={value === speed ? "option active" : "option"}
+                onClick={() => setSpeed(value)}
+              >
+                {value}x
+              </button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <p className="control-label">Voice</p>
+          {englishVoices.length ? (
+            <select className="voice-select" value={englishVoice?.voiceURI ?? ""} onChange={handleVoiceChange}>
+              {englishVoices.map((voice) => (
+                <option key={voice.voiceURI} value={voice.voiceURI}>
+                  {voice.name} ({voice.lang})
+                </option>
+              ))}
+            </select>
+          ) : (
+            <p className="error-text">英語音声が見つかりません。OSの英語音声を追加してください。</p>
+          )}
+        </div>
+        <div>
+          <p className="control-label">Native Audio</p>
+          <label className="upload-button">
+            実音声をアップロード
+            <input type="file" accept="audio/*" onChange={handleAudioUpload} />
+          </label>
+          <p className="muted">
+            {audioSource.name
+              ? `${audioSource.name} を優先再生中`
+              : "未設定時はブラウザ英語音声で再生します"}
+          </p>
+        </div>
+      </div>
 
-      <section className="lesson-layout bottom">
-        <div className="card">
+      <div className="lesson-layout bottom">
+        <div className="card inner-card">
           <p className="section-label">Shadowing</p>
           <h3>録音して比較する</h3>
-          <p className="muted">
-            最初はAI採点なし。元音声を再生したあと、自分の音声を残して聞き比べます。
-          </p>
           <button className="primary-button" onClick={toggleRecording}>
             {recordingState === "recording" ? "録音停止" : "録音開始"}
           </button>
           {recordingState === "blocked" && (
             <p className="error-text">マイク権限が必要です。ブラウザで許可してください。</p>
           )}
+          {audioSource.url && <audio controls src={audioSource.url} className="audio-player" />}
           {recordedUrl && <audio controls src={recordedUrl} className="audio-player" />}
         </div>
 
-        <div className="card">
+        <div className="card inner-card">
           <p className="section-label">Dictation</p>
           <h3>聞こえた通りに入力</h3>
           <textarea
@@ -457,11 +476,8 @@ function LessonScreen({
             placeholder="例: whaddaya doing"
           />
           <div className="dictation-actions">
-            <button className="primary-button" onClick={submitDictation}>
+            <button className="primary-button" onClick={() => setShowResult(true)}>
               答え合わせ
-            </button>
-            <button className="ghost-button" onClick={finishSentence}>
-              復習に保存して次へ
             </button>
           </div>
           {showResult && (
@@ -474,177 +490,93 @@ function LessonScreen({
             </div>
           )}
         </div>
-      </section>
-    </div>
-  );
-}
-
-function ResultScreen({ results, onRestart, onOpenLesson }) {
-  const weakMap = results.reduce((acc, item) => {
-    item.sentence.tags.forEach((tag) => {
-      acc[tag] = (acc[tag] ?? 0) + (item.mistakes > 0 ? 1 : 0);
-    });
-    return acc;
-  }, {});
-
-  const weakTags = Object.entries(weakMap).sort((a, b) => b[1] - a[1]);
-
-  return (
-    <div className="screen">
-      <section className="card hero">
-        <p className="eyebrow">Review</p>
-        <h1>聞き取れなかった箇所を復習キューへ。</h1>
-        <p className="hero-copy">
-          間違えた文と音変化タグをそのまま残して、次回は弱い崩れ方だけ集中的に回せます。
-        </p>
-      </section>
-
-      <section className="dashboard-grid">
-        <div className="card">
-          <p className="section-label">最近の復習</p>
-          <h2>{results.filter((item) => item.mistakes > 0).length}文</h2>
-          <p>聞こえない文をそのまま復習対象にしています。</p>
-        </div>
-        <div className="card">
-          <p className="section-label">苦手な音変化</p>
-          <div className="tag-list">
-            {weakTags.map(([tag, count]) => (
-              <span key={tag} className="chip warning">
-                {tag} {count}
-              </span>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="card">
-        <p className="section-label">復習登録</p>
-        <div className="review-list">
-          {results.map((item) => (
-            <article key={item.sentenceId} className="review-item">
-              <div>
-                <h3>{item.sentence.english}</h3>
-                <p>{item.sentence.heardAs}</p>
-              </div>
-              <div className="review-meta">
-                <span className={item.mistakes > 0 ? "badge danger" : "badge"}>
-                  {item.mistakes > 0 ? `${item.mistakes}箇所ミス` : "クリア"}
-                </span>
-                <div className="tag-list">
-                  {item.sentence.tags.map((tag) => (
-                    <span key={tag} className="chip">
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="cta-row">
-        <button className="ghost-button" onClick={onOpenLesson}>
-          教材一覧へ
-        </button>
-        <button className="primary-button" onClick={onRestart}>
-          もう一度このレッスンをやる
-        </button>
-      </section>
-    </div>
+      </div>
+    </section>
   );
 }
 
 export default function App() {
-  const [screen, setScreen] = useState("home");
-  const [activeLessonId, setActiveLessonId] = useState(null);
-  const [sentenceIndex, setSentenceIndex] = useState(0);
-  const [sentenceProgress, setSentenceProgress] = useState(() => {
+  const [sourceText, setSourceText] = useState(() => {
     const saved = window.localStorage.getItem(STORAGE_KEY);
-    return saved ? JSON.parse(saved).sentenceProgress ?? {} : {};
+    return saved ? JSON.parse(saved).sourceText ?? DEFAULT_TEXT : DEFAULT_TEXT;
   });
-  const [results, setResults] = useState(() => {
+  const [appliedText, setAppliedText] = useState(() => {
     const saved = window.localStorage.getItem(STORAGE_KEY);
-    return saved ? JSON.parse(saved).results ?? [] : [];
+    return saved ? JSON.parse(saved).appliedText ?? DEFAULT_TEXT : DEFAULT_TEXT;
   });
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [audioBySentence, setAudioBySentence] = useState({});
 
-  const activeLesson = lessonLibrary.find((lesson) => lesson.id === activeLessonId) ?? lessonLibrary[0];
+  const sentences = useMemo(() => splitIntoSentences(appliedText), [appliedText]);
+  const draftSentences = useMemo(() => splitIntoSentences(sourceText), [sourceText]);
+  const activeSentence = sentences[activeIndex] ?? "";
 
   useEffect(() => {
     window.localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({
-        sentenceProgress,
-        results,
+        sourceText,
+        appliedText,
       }),
     );
-  }, [results, sentenceProgress]);
+  }, [sourceText, appliedText]);
 
-  const stats = useMemo(() => {
-    const tagWeakness = results.reduce((acc, item) => {
-      if (item.mistakes > 0) {
-        item.sentence.tags.forEach((tag) => {
-          acc[tag] = (acc[tag] ?? 0) + 1;
-        });
-      }
-      return acc;
-    }, {});
-
-    return {
-      completedSentences: results.length,
-      tagWeakness,
-    };
-  }, [results]);
-
-  const startLesson = (lessonId) => {
-    setActiveLessonId(lessonId);
-    setSentenceIndex(0);
-    setSentenceProgress({});
-    setResults([]);
-    setScreen("lesson");
-  };
-
-  const handleCompleteSentence = (result) => {
-    const nextResults = [...results.filter((item) => item.sentenceId !== result.sentenceId), result];
-    setResults(nextResults);
-
-    if (sentenceIndex + 1 < activeLesson.sentences.length) {
-      setSentenceIndex(sentenceIndex + 1);
-      return;
+  useEffect(() => {
+    if (activeIndex > sentences.length - 1) {
+      setActiveIndex(Math.max(sentences.length - 1, 0));
     }
+  }, [activeIndex, sentences.length]);
 
-    setScreen("result");
+  const applySourceText = () => {
+    setAppliedText(sourceText);
+    setActiveIndex(0);
+    setAudioBySentence({});
   };
 
-  if (screen === "lesson") {
-    const sentenceId = activeLesson.sentences[sentenceIndex].id;
+  return (
+    <div className="screen single-page">
+      <section className="hero card">
+        <p className="eyebrow">HearGap</p>
+        <h1>貼り付けた英文を、そのまま聞ける形にする。</h1>
+        <p className="hero-copy">
+          教材一覧は持たず、英文を貼るだけで 1 文ごとの Sync View と練習フローを作る構成に変えました。
+          音声は実ファイルを優先し、ない場合だけ英語TTSを使います。
+        </p>
+      </section>
 
-    return (
-      <LessonScreen
-        lesson={activeLesson}
-        sentenceIndex={sentenceIndex}
-        onBack={() => setScreen("home")}
-        onComplete={handleCompleteSentence}
-        progress={sentenceProgress[sentenceId] ?? {}}
-        setProgress={(value) =>
-          setSentenceProgress((current) => ({
-            ...current,
-            [sentenceId]: value,
-          }))
-        }
-      />
-    );
-  }
+      <div className="workspace-grid">
+        <div className="workspace-sidebar">
+          <EditorCard
+            text={sourceText}
+            onTextChange={setSourceText}
+            onApply={applySourceText}
+            sentenceCount={draftSentences.length}
+          />
+          <SentenceRail sentences={sentences} activeIndex={activeIndex} onSelect={setActiveIndex} />
+        </div>
 
-  if (screen === "result") {
-    return (
-      <ResultScreen
-        results={results}
-        onOpenLesson={() => setScreen("home")}
-        onRestart={() => startLesson(activeLesson.id)}
-      />
-    );
-  }
-
-  return <HomeScreen lessons={lessonLibrary} onStart={startLesson} stats={stats} />;
+        {activeSentence ? (
+          <PracticePanel
+            sentence={activeSentence}
+            currentIndex={activeIndex}
+            totalSentences={sentences.length}
+            onPrev={() => setActiveIndex((current) => Math.max(current - 1, 0))}
+            onNext={() => setActiveIndex((current) => Math.min(current + 1, sentences.length - 1))}
+            audioSource={audioBySentence[activeSentence] ?? {}}
+            setAudioSource={(value) =>
+              setAudioBySentence((current) => ({
+                ...current,
+                [activeSentence]: value,
+              }))
+            }
+          />
+        ) : (
+          <section className="card empty-card">
+            <p className="section-label">Ready</p>
+            <h2>英文を貼り付けるとここに学習画面が出ます。</h2>
+          </section>
+        )}
+      </div>
+    </div>
+  );
 }
