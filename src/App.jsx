@@ -466,7 +466,7 @@ const pickEnglishVoice = (voices, preferredVoiceURI) => {
 
 function EditorCard({ text, onTextChange, onApply, sentenceCount }) {
   return (
-    <section className="card compact-card">
+    <section className="card compact-card source-card">
       <p className="section-label">Source Text</p>
       <h2>英文を貼り付けて Sync View を作る</h2>
       <p className="muted">
@@ -593,8 +593,6 @@ function PracticePanel({
   totalSentences,
   onPrev,
   onNext,
-  audioSource,
-  setAudioSource,
 }) {
   const [highlightIndex, setHighlightIndex] = useState(-1);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -668,42 +666,16 @@ function PracticePanel({
     }
   };
 
-  const runNativeAudioPlayback = () => {
-    if (!audioSource.url) {
-      return false;
-    }
-
+  const stopPlayback = () => {
+    window.speechSynthesis.cancel();
     timeoutRef.current.forEach((id) => window.clearTimeout(id));
     timeoutRef.current = [];
-    setIsPlaying(true);
-
-    const audio = new Audio(audioSource.url);
-    audioRef.current = audio;
-    audio.playbackRate = speed;
-    const durationMs = Math.max((audioSource.duration || 2.2) * 1000 / speed, 1800);
-    scheduleHighlights(durationMs, 500);
-
-    const playLoop = (count) => {
-      audio.currentTime = 0;
-      audio.playbackRate = speed;
-      audio.play().catch(() => {
-        setIsPlaying(false);
-      });
-
-      audio.onended = () => {
-        if (count + 1 < loopCount) {
-          const nextId = window.setTimeout(() => playLoop(count + 1), 500);
-          timeoutRef.current.push(nextId);
-          return;
-        }
-
-        setIsPlaying(false);
-        setHighlightIndex(-1);
-      };
-    };
-
-    playLoop(0);
-    return true;
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
+    setIsPlaying(false);
+    setHighlightIndex(-1);
   };
 
   const runTtsPlayback = () => {
@@ -741,9 +713,7 @@ function PracticePanel({
   };
 
   const runPlayback = () => {
-    if (runNativeAudioPlayback()) {
-      return;
-    }
+    stopPlayback();
     runTtsPlayback();
   };
 
@@ -751,30 +721,6 @@ function PracticePanel({
     const voiceURI = event.target.value;
     window.localStorage.setItem(VOICE_STORAGE_KEY, voiceURI);
     setEnglishVoice(englishVoices.find((voice) => voice.voiceURI === voiceURI) ?? null);
-  };
-
-  const handleAudioUpload = (event) => {
-    const file = event.target.files?.[0];
-    if (!file) {
-      return;
-    }
-
-    const url = URL.createObjectURL(file);
-    const probe = new Audio(url);
-    probe.onloadedmetadata = () => {
-      setAudioSource({
-        name: file.name,
-        url,
-        duration: probe.duration || 0,
-      });
-    };
-    probe.onerror = () => {
-      setAudioSource({
-        name: file.name,
-        url,
-        duration: 0,
-      });
-    };
   };
 
   const toggleRecording = async () => {
@@ -813,34 +759,39 @@ function PracticePanel({
     }
   };
 
+  const handlePrev = () => {
+    stopPlayback();
+    onPrev();
+  };
+
+  const handleNext = () => {
+    stopPlayback();
+    onNext();
+  };
+
   return (
     <section className="card practice-card">
-      <div className="player-top">
+      <div className="lesson-top">
         <div>
           <p className="section-label">Lesson</p>
           <h2>
             {currentIndex + 1} / {totalSentences}
           </h2>
         </div>
-        <div className="editor-actions">
-          <button className="ghost-button" onClick={onPrev} disabled={currentIndex === 0}>
+        <div className="lesson-nav">
+          <button className="ghost-button" onClick={handlePrev} disabled={currentIndex === 0}>
             前へ
           </button>
-          <button className="ghost-button" onClick={onNext} disabled={currentIndex === totalSentences - 1}>
+          <button className="ghost-button" onClick={handleNext} disabled={currentIndex === totalSentences - 1}>
             次へ
+          </button>
+          <button className="primary-button" onClick={runPlayback}>
+            {isPlaying ? "再生中" : "再生する"}
           </button>
         </div>
       </div>
 
-      <div className="player-top">
-        <div>
-          <p className="section-label">Playback</p>
-          <h3>{isPlaying ? "再生中" : "待機中"}</h3>
-        </div>
-        <button className="primary-button" onClick={runPlayback}>
-          再生する
-        </button>
-      </div>
+      <p className="playback-state">{isPlaying ? "再生中" : "待機中"}</p>
 
       <div className="player-bar">
         {words.map((word, index) => (
@@ -852,7 +803,6 @@ function PracticePanel({
 
       <div className="sync-panel">
         <p className="section-label">Sync View</p>
-        <h3>{sentence}</h3>
         {helper.heardAs ? <p className="heard-as">{helper.heardAs}</p> : null}
         {helper.kana ? <p className="kana-line">{helper.kana}</p> : null}
         {helper.ipa ? <p className="ipa-line">{helper.ipa}</p> : null}
@@ -869,7 +819,7 @@ function PracticePanel({
         {helper.notes ? <p className="helper-notes">{helper.notes}</p> : null}
       </div>
 
-      <div className="control-grid">
+      <div className="control-grid compact-controls">
         <div>
           <p className="control-label">ループ</p>
           <div className="option-row">
@@ -912,18 +862,6 @@ function PracticePanel({
             <p className="error-text">英語音声が見つかりません。OSの英語音声を追加してください。</p>
           )}
         </div>
-        <div>
-          <p className="control-label">Native Audio</p>
-          <label className="upload-button">
-            実音声をアップロード
-            <input type="file" accept="audio/*" onChange={handleAudioUpload} />
-          </label>
-          <p className="muted">
-            {audioSource.name
-              ? `${audioSource.name} を優先再生中`
-              : "未設定時はブラウザ英語音声で再生します"}
-          </p>
-        </div>
       </div>
 
       <details className="mobile-panel helper-panel" open={helperOpen} onToggle={(event) => setHelperOpen(event.currentTarget.open)}>
@@ -956,7 +894,6 @@ function PracticePanel({
             {recordingState === "blocked" ? (
               <p className="error-text">マイク権限が必要です。ブラウザで許可してください。</p>
             ) : null}
-            {audioSource.url ? <audio controls src={audioSource.url} className="audio-player" /> : null}
             {recordedUrl ? <audio controls src={recordedUrl} className="audio-player" /> : null}
           </div>
 
@@ -1003,8 +940,6 @@ export default function App() {
     return saved ? JSON.parse(saved).helpersBySentence ?? DEFAULT_HELPERS : DEFAULT_HELPERS;
   });
   const [activeIndex, setActiveIndex] = useState(0);
-  const [audioBySentence, setAudioBySentence] = useState({});
-  const [sourceOpen, setSourceOpen] = useState(false);
 
   const sentences = useMemo(() => splitIntoSentences(appliedText), [appliedText]);
   const draftSentences = useMemo(() => splitIntoSentences(sourceText), [sourceText]);
@@ -1032,7 +967,6 @@ export default function App() {
     const nextSentences = splitIntoSentences(sourceText);
     setAppliedText(sourceText);
     setActiveIndex(0);
-    setAudioBySentence({});
     setHelpersBySentence((current) => {
       const nextHelpers = {};
       nextSentences.forEach((sentence) => {
@@ -1062,18 +996,12 @@ export default function App() {
 
       <div className="workspace-grid">
         <div className="workspace-sidebar">
-          <details className="mobile-panel source-panel" open={sourceOpen} onToggle={(event) => setSourceOpen(event.currentTarget.open)}>
-            <summary className="panel-summary">
-              <span>英文ソース</span>
-              <span>{sourceOpen ? "閉じる" : "開く"}</span>
-            </summary>
-            <EditorCard
-              text={sourceText}
-              onTextChange={setSourceText}
-              onApply={applySourceText}
-              sentenceCount={draftSentences.length}
-            />
-          </details>
+          <EditorCard
+            text={sourceText}
+            onTextChange={setSourceText}
+            onApply={applySourceText}
+            sentenceCount={draftSentences.length}
+          />
           <SentenceRail sentences={sentences} activeIndex={activeIndex} onSelect={setActiveIndex} />
         </div>
 
@@ -1087,13 +1015,6 @@ export default function App() {
             totalSentences={sentences.length}
             onPrev={() => setActiveIndex((current) => Math.max(current - 1, 0))}
             onNext={() => setActiveIndex((current) => Math.min(current + 1, sentences.length - 1))}
-            audioSource={audioBySentence[activeSentence] ?? {}}
-            setAudioSource={(value) =>
-              setAudioBySentence((current) => ({
-                ...current,
-                [activeSentence]: value,
-              }))
-            }
           />
         ) : (
           <section className="card empty-card">

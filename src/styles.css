@@ -68,7 +68,7 @@ button {
 }
 
 .hero {
-  padding: 36px;
+  padding: 14px 18px;
 }
 
 .eyebrow,
@@ -85,6 +85,11 @@ button {
 .muted,
 .card p {
   color: rgba(245, 241, 232, 0.78);
+}
+
+.hero-copy {
+  font-size: 0.88rem;
+  margin: 6px 0 0;
 }
 
 .hero-points,
@@ -131,7 +136,7 @@ button {
 
 .workspace-sidebar {
   display: grid;
-  gap: 18px;
+  gap: 12px;
   align-self: start;
 }
 
@@ -353,6 +358,25 @@ textarea {
   min-height: 100%;
 }
 
+.lesson-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.lesson-nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: nowrap;
+}
+
+.playback-state {
+  margin: 8px 0 0;
+  font-size: 0.95rem;
+}
+
 .sync-panel {
   margin-top: 24px;
 }
@@ -411,6 +435,14 @@ textarea {
 
 .helper-actions {
   margin: 10px 0 16px;
+}
+
+.source-card {
+  padding: 16px;
+}
+
+.compact-controls {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .helper-grid {
@@ -477,12 +509,22 @@ textarea {
   }
 
   .hero {
-    padding: 18px;
+    padding: 10px 14px;
+  }
+
+  .hero h1 {
+    font-size: 1.2rem;
+    line-height: 1.2;
+  }
+
+  .eyebrow {
+    font-size: 0.62rem;
+    margin-bottom: 4px;
   }
 
   .hero-copy {
-    font-size: 0.92rem;
-    margin: 8px 0 0;
+    font-size: 0.78rem;
+    margin: 4px 0 0;
   }
 
   .card {
@@ -496,12 +538,6 @@ textarea {
 
   .workspace-sidebar {
     gap: 10px;
-  }
-
-  .source-panel .card {
-    border: 0;
-    background: transparent;
-    padding-top: 0;
   }
 
   .sentence-rail {
@@ -518,9 +554,8 @@ textarea {
     scroll-snap-align: start;
   }
 
-  .player-top {
-    flex-direction: row;
-    align-items: center;
+  .lesson-top {
+    align-items: flex-start;
   }
 
   .player-bar {
@@ -566,6 +601,10 @@ textarea {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 12px;
     margin-top: 16px;
+  }
+
+  .compact-controls {
+    grid-template-columns: 1fr;
   }
 
   .helper-grid {
@@ -630,9 +669,18 @@ textarea {
     border-radius: 14px;
   }
 
-  .player-top,
   .editor-actions {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .lesson-top {
     flex-direction: column;
-    align-items: flex-start;
+  }
+
+  .lesson-nav {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
   }
 }
