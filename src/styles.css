@@ -254,6 +254,13 @@ button {
   color: #ffae76;
 }
 
+.ipa-line {
+  margin: -8px 0 18px;
+  font-size: 1rem;
+  color: rgba(245, 241, 232, 0.7);
+  font-family: "Space Grotesk", sans-serif;
+}
+
 .translation {
   font-size: 1.02rem;
 }

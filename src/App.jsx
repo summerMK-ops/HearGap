@@ -37,6 +37,7 @@ const DEFAULT_HELPERS = {
 const emptyHelper = () => ({
   heardAs: "",
   kana: "",
+  ipa: "",
   translation: "",
   notes: "",
   tags: [],
@@ -103,6 +104,31 @@ const KANA_MAP = {
   now: "ナウ",
 };
 
+const IPA_MAP = {
+  what: "wʌt",
+  are: "ɑɚ",
+  you: "ju",
+  doing: "ˈduːɪŋ",
+  didnt: "dɪn",
+  get: "ɡɛt",
+  chance: "tʃæns",
+  call: "kɔl",
+  people: "ˈpipəl",
+  missed: "mɪst",
+  it: "ɪt",
+  pork: "pɔrk",
+  and: "ən",
+  theres: "ðerz",
+  some: "səm",
+  honey: "ˈhʌni",
+  garlic: "ˈɡɑrlɪk",
+  oh: "oʊ",
+  yeah: "jɛə",
+  quit: "kwɪt",
+  right: "raɪt",
+  now: "naʊ",
+};
+
 const PHRASE_RULES = [
   {
     match: ["what", "are", "you"],
@@ -164,6 +190,7 @@ const PHRASE_RULES = [
     match: ["right", "now"],
     heardAs: "right now",
     kana: "ライナウ",
+    ipa: "raɪt naʊ",
     translation: "今すぐ",
     tags: ["連結"],
     note: "right now が切れずに流れて聞こえる。",
@@ -179,6 +206,70 @@ const PHRASE_RULES = [
 ];
 
 const normalizeWord = (word) => word.toLowerCase().replace(/[^a-z']/g, "").replace(/'/g, "");
+
+const fallbackKana = (word) =>
+  word
+    .toLowerCase()
+    .replace(/tion/g, "ション")
+    .replace(/ight/g, "アイト")
+    .replace(/ow/g, "オウ")
+    .replace(/ar/g, "アー")
+    .replace(/or/g, "オー")
+    .replace(/qu/g, "ク")
+    .replace(/th/g, "ズ")
+    .replace(/sh/g, "シュ")
+    .replace(/ch/g, "チ")
+    .replace(/ph/g, "フ")
+    .replace(/ee/g, "イー")
+    .replace(/oo/g, "ウー")
+    .replace(/ou/g, "アウ")
+    .replace(/au/g, "オー")
+    .replace(/a/g, "ア")
+    .replace(/e/g, "エ")
+    .replace(/i/g, "イ")
+    .replace(/o/g, "オ")
+    .replace(/u/g, "ウ")
+    .replace(/b/g, "ブ")
+    .replace(/c/g, "ク")
+    .replace(/d/g, "ド")
+    .replace(/f/g, "フ")
+    .replace(/g/g, "グ")
+    .replace(/h/g, "ハ")
+    .replace(/j/g, "ジ")
+    .replace(/k/g, "ク")
+    .replace(/l/g, "ル")
+    .replace(/m/g, "ム")
+    .replace(/n/g, "ン")
+    .replace(/p/g, "プ")
+    .replace(/q/g, "ク")
+    .replace(/r/g, "ル")
+    .replace(/s/g, "ス")
+    .replace(/t/g, "ト")
+    .replace(/v/g, "ヴ")
+    .replace(/w/g, "ウ")
+    .replace(/x/g, "クス")
+    .replace(/y/g, "イ")
+    .replace(/z/g, "ズ");
+
+const fallbackIpa = (word) =>
+  word
+    .toLowerCase()
+    .replace(/tion/g, "ʃən")
+    .replace(/igh/g, "aɪ")
+    .replace(/ow/g, "aʊ")
+    .replace(/qu/g, "kw")
+    .replace(/th/g, "θ")
+    .replace(/sh/g, "ʃ")
+    .replace(/ch/g, "tʃ")
+    .replace(/ph/g, "f")
+    .replace(/ee/g, "iː")
+    .replace(/oo/g, "uː")
+    .replace(/ou/g, "aʊ")
+    .replace(/a/g, "æ")
+    .replace(/e/g, "e")
+    .replace(/i/g, "ɪ")
+    .replace(/o/g, "ɑ")
+    .replace(/u/g, "ʌ");
 
 const normalizeInputText = (text) =>
   text
@@ -205,6 +296,7 @@ const buildAutoHelper = (sentence) => {
   const notes = [];
   const heardTokens = [];
   const kanaTokens = [];
+  const ipaTokens = [];
   const translationTokens = [];
 
   for (let index = 0; index < normalized.length; ) {
@@ -215,6 +307,9 @@ const buildAutoHelper = (sentence) => {
     if (phraseRule) {
       heardTokens.push(phraseRule.heardAs);
       kanaTokens.push(phraseRule.kana);
+      if (phraseRule.ipa) {
+        ipaTokens.push(phraseRule.ipa);
+      }
       if (phraseRule.translation) {
         translationTokens.push(phraseRule.translation);
       }
@@ -226,37 +321,44 @@ const buildAutoHelper = (sentence) => {
 
     const word = normalized[index];
     let heardWord = word;
-    let kanaWord = KANA_MAP[word] ?? word;
+    let kanaWord = KANA_MAP[word] ?? fallbackKana(word);
+    let ipaWord = IPA_MAP[word] ?? fallbackIpa(word);
 
     if (word === "didnt") {
       heardWord = "din";
       kanaWord = "ディン";
+      ipaWord = "dɪn";
       tags.push("脱落");
       notes.push("didn't の t が落ちやすい。");
     } else if (word === "you") {
       heardWord = "ya";
       kanaWord = "ヤ";
+      ipaWord = "jə";
       tags.push("弱形");
       notes.push("you が弱く ヤ に近づく。");
     } else if (word === "and") {
       heardWord = "n";
       kanaWord = "ン";
+      ipaWord = "ən";
       tags.push("弱形");
       notes.push("and が短く弱くなる。");
     } else if (word === "to") {
       heardWord = "tə";
       kanaWord = "タ";
+      ipaWord = "tə";
       tags.push("弱形");
       notes.push("to が弱く曖昧母音になる。");
     } else if (word === "of") {
       heardWord = "əv";
       kanaWord = "ァヴ";
+      ipaWord = "əv";
       tags.push("弱形");
       notes.push("of が弱く短くなる。");
     }
 
     heardTokens.push(heardWord);
     kanaTokens.push(kanaWord);
+    ipaTokens.push(ipaWord);
     const translation = AUTO_TRANSLATIONS[word];
     if (translation) {
       translationTokens.push(translation);
@@ -271,11 +373,13 @@ const buildAutoHelper = (sentence) => {
 
   const heardAs = heardTokens.join(" ").replace(/\s+([?.!,])/g, "$1");
   const kana = kanaTokens.join(" ");
+  const ipa = ipaTokens.join(" ");
   const translation = translationTokens.join(" ").trim();
 
   return {
     heardAs,
     kana,
+    ipa,
     translation: translation || "日本語メモを追加",
     notes: notes.join(" "),
     tags: [...new Set(tags)],
@@ -431,6 +535,15 @@ function HelperEditor({ helper, onChange }) {
             value={helper.kana}
             onChange={(event) => onChange({ ...helper, kana: event.target.value })}
             placeholder="ワダヤ ドゥーイン"
+          />
+        </div>
+        <div>
+          <p className="control-label">IPA</p>
+          <input
+            className="text-input"
+            value={helper.ipa ?? ""}
+            onChange={(event) => onChange({ ...helper, ipa: event.target.value })}
+            placeholder="oʊ jɛə kwɪt raɪt naʊ"
           />
         </div>
         <div>
@@ -740,6 +853,7 @@ function PracticePanel({
         <h3>{sentence}</h3>
         {helper.heardAs ? <p className="heard-as">{helper.heardAs}</p> : null}
         {helper.kana ? <p className="kana-line">{helper.kana}</p> : null}
+        {helper.ipa ? <p className="ipa-line">{helper.ipa}</p> : null}
         {helper.translation ? <p className="translation">{helper.translation}</p> : null}
         {helper.tags.length ? (
           <div className="tag-list">
